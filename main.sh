@@ -10,7 +10,7 @@ instance_length=${#instances_id[@]}
 #Check if any instance attached to LB"
 if [ $instance_length == 0 ]
 then
-	echo "No instances attached to $lb"
+  echo "No instances attached to $lb"
   exit 1
 fi
 for (( j=0; j<$instance_length; j++ ))
@@ -47,7 +47,7 @@ echo "Checking application status"
 #if curl -I -H "$instanceip" http://localhost/testall | grep "301 Moved Permanently" > /dev/null;
 if ssh -t -t -i ~/Downloads/app.pem ec2-user@$1 "echo SUCCESS; w"; 
 then 
-	echo "Application is UP"
+  echo "Application is UP"
 else
   echo "Application is DOWN"
   exit 1
