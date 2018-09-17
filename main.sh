@@ -18,9 +18,10 @@ do
 instance=${instances_id[$j]}
 instanceip=($(aws ec2 describe-instances --instance-ids $instance --query Reservations[].Instances[].PublicIpAddress --output=text))
 
+
 #removing target from ami
 echo "Removing node $instance from the load balancer."
-aws elb deregister-instances-from-load-balancer --load-balancer-name $lb --instances $instance
+aws elb deregister-instances-from-load-balancer --load-balancer-name $lb --instances $instance --output=text
 
 sleep 10
 
@@ -31,30 +32,45 @@ echo "Creating backup for $instance"
 if [ $env == primary ]
 then
   echo "Creating AMI with reboot"
-  aws ec2 create-image --instance-id $instance --name "$ami" --description "Automated backup created for $instance"
-else
+  aws ec2 create-image --instance-id $instance --name "$ami" --description "Automated backup created for $instance" --output=text
+elif [ $env == secondary ]
+  then
   echo "Creating AMI without reboot"
-  aws ec2 create-image --no-reboot --instance-id $instance --name "$ami" --description "Automated backup created for $instance"
+  aws ec2 create-image --no-reboot --instance-id $instance --name "$ami" --description "Automated backup created for $instance" --output=text
+else
+  echo "No region $env found"
+  exit 1
 fi
 echo "Backup process completed...."
 
 #Executing maintenance script
+
 updateandreboot ()
 {
-ssh -i ~/Downloads/app.pem ec2-user@$1 "sudo /usr/bin/yum update -y"; "sudo reboot"
-sleep 1m
-echo "Checking application status"
-#if curl -I -H "$instanceip" http://localhost/testall | grep "301 Moved Permanently" > /dev/null;
-if ssh -t -t -i ~/Downloads/app.pem ec2-user@$1 "echo SUCCESS; w"; 
-then 
-  echo "Application is UP"
-else
-  echo "Application is DOWN"
-  exit 1
-fi
+  echo "Starting sytem upgrade......"
+  ssh -i ~/Downloads/app.pem ec2-user@$1 'sudo /usr/bin/yum update -y; sudo reboot'
+  sleep 1m
+  echo "Checking application status"
+  responce=$(curl -I https://amazon.jifflenow.com  --write-out %{http_code} --output /dev/null --silent)
+  echo "$responce"
+  if [[ "$responce" == "200" ]]
+  then 
+    echo "Application is UP"
+  else
+    echo "Application is DOWN"
+    exit 1
+  fi
 }
 
+echo "Do you want to perform a system update?"
+echo "Type 'yes'| 'no'"
+read continue
+if [ $continue = yes ]
+then
 updateandreboot $instanceip
+else
+  echo "No maintenance for $instance"
+fi
 
 
 #Adding target back to LB
@@ -71,14 +87,18 @@ read old
 if [ $old == yes ]
 then
   echo "Fetching AMI details ...."
-	my_array=($(aws ec2 describe-images --owners=488905371868 --query Images[].ImageId --output=text))
-  array_length=${#my_array[@]}
+	ami_array=($(aws ec2 describe-images --owners=488905371868 --query Images[].ImageId --output=text))
+  array_length=${#ami_array[@]}
   for (( i=0; i<$array_length; i++ ))
   do
-    image_id=${my_array[$i]}
+    image_id=${ami_array[$i]}
     image_name=($(aws ec2 describe-images --image-ids=$image_id  --query Images[].Name --output=text))
     image_date=($(aws ec2 describe-images --image-ids=$image_id  --query Images[].CreationDate --output=text | cut -d'T' -f1))
-    if [ "$image_date" == "$(gdate +%Y-%m-%d --date '3 days ago')" ];
+    imgdt=$(gdate -d $image_date +%s)
+    current_date=$(date +%Y-%m-%d)
+    todate=$(gdate -d $current_date +%s)
+    echo $current_date
+    if [ '$todate' -gt '$imgdt' ];
     then
       echo "Following AMI is found : $image_id"
       echo ""Image Name : $image_name""
