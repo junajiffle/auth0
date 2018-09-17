@@ -1,10 +1,10 @@
 # AWS AMI Backup and Cleanup
 
 The primary goal of the script is to automate the backup procedure for a 3 node HA appliance.
-```
+
 Note: Before running the script make sure that you have installed and configured aws-cli on the machine.
 Please refer the [link] (https://docs.aws.amazon.com/cli/latest/userguide/installing.html) for setting up the AWS command line interface.
-```
+
 
 **Procedure for taking backup and cleanup:**
 
@@ -31,13 +31,13 @@ Load balancer for app2 is : xxxx
 **Remove a node from the load balancer.**
 
 We can get the list of instances attached to the Lb using the command "aws elb describe-load-balancers". Create an array which holds the "instance-id" of the instances. For loop ins shell scipt can be used to perform maintenance on each instance one at a time. 
-```
+
 *Command:*
-
+```
 aws elb deregister-instances-from-load-balancer --load-balancer-name $lb --instances $instance
-
+```
 **Sample output:**
-
+```
 Removing node x-xxxxxxx from the load balancer.
 {
     "Instances": [
@@ -51,16 +51,16 @@ Removing node x-xxxxxxx from the load balancer.
 **Create an AMI from the node (with reboot for primary and without reboot for secondary).**
 
 Next is to create an AMI for the instance which has been removed from the LB now. If this is a node in primary environment, AMI should be created with reboot. By default, Amazon EC2 attempts to shut down and reboot the instance before creating the image. You can use --no-reboot for secondary environment to eliminate the restart.
-```
-*Command:*
 
+*Command:*
+```
 Creating AMI with reboot:
    aws ec2 create-image --instance-id $instance --name "$ami" --description "Automated backup created for $instance"
 Creating AMI without reboot
    aws ec2 create-image --no-reboot --instance-id $instance --name "$ami" --description "Automated backup created for $instance"
-
+```
 **Sample output:**
-
+```
 Creating AMI with reboot
 {
     "ImageId": "ami-06130e3d6d10520d6"
@@ -70,9 +70,9 @@ Creating AMI with reboot
 **Update and reboot the machine. Wait for the node "/testall" endpoint to return "OK".**
 
 This is a sample maintenance activity. Here we are updating and rebooting the machine which has been taken out of LB. Once the instance is up. We need to make sure that the application is up and running. Steps for doing this activity is written inside a function called "updateandreboot ()".Calling the function with argument as instance IP will. perform the following actions.
-```
-*Command:*
 
+*Command:*
+```
 updateandreboot ()
 {
 ssh -i ~/Downloads/app.pem ec2-user@$1 "sudo /usr/bin/yum update -y"; "sudo reboot"
@@ -87,9 +87,9 @@ else
    exit 1
 fi
 }
-
+```
 **Sample output:**
-
+```
 Authentication failed.
 main.sh: line 44: sudo reboot: command not found
 Checking application status
@@ -103,12 +103,13 @@ Application is UP
 **Add the node back to the load balancer.**
 
 Once the maintenance is completed and the application is up. We can add the instance backup to LB.
-```
+
 *Command:* 
+```
 aws elb register-instances-with-load-balancer --load-balancer-name $lb --instances $instance
-
+```
 **Sample output:**
-
+```
 Adding target back to LB
 {
     "Instances": [
